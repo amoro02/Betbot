@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { RecommendCard } from './AIAdvisor';
 
 const SPORT_ICONS = {
   Football: '⚽',
@@ -137,6 +138,13 @@ const EventCard = ({ event, onAddToBetSlip }) => {
         <p className={`text-xs mt-2 font-medium ${message.type === 'success' ? 'text-green-600' : 'text-red-500'}`}>
           {message.text}
         </p>
+      )}
+
+      {!isCompleted && (
+        <RecommendCard
+          event={event}
+          onBet={(pick) => { handleSelect(pick); }}
+        />
       )}
     </div>
   );
