@@ -4,7 +4,7 @@ import EventsList from './components/EventsList';
 import BetHistory from './components/BetHistory';
 import AIAdvisor, { AutoBetPanel } from './components/AIAdvisor';
 
-const API = 'http://localhost:5000/api';
+const API = '/api';
 const TABS = ['Events', 'My Bets', 'AI Advisor'];
 
 export default function App() {

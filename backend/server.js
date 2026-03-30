@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const { initialEvents } = require('./data/sportsData');
 const aiRoutes = require('./routes/ai');
@@ -179,10 +180,17 @@ app.post('/api/reset', (req, res) => {
   res.json({ message: 'Reset successful', bankroll: store.bankroll });
 });
 
+// ── Serve frontend (production / Replit) ──────────────────────────────────────
+const frontendDist = path.join(__dirname, '../frontend/dist');
+app.use(express.static(frontendDist));
+app.get('*', (req, res) => {
+  res.sendFile(path.join(frontendDist, 'index.html'));
+});
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 
 loadEvents().then(() => {
-  app.listen(PORT, () => {
-    console.log(`BetIQ API running on http://localhost:${PORT}`);
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`BetIQ running on http://0.0.0.0:${PORT}`);
   });
 });

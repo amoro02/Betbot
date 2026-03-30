@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 
-const API = 'http://localhost:5000/api';
+const API = '/api';
 const SESSION_ID = `session_${Date.now()}`;
 
 const CONFIDENCE_COLOR = {

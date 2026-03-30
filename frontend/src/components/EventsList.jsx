@@ -50,7 +50,7 @@ const EventCard = ({ event, onAddToBetSlip }) => {
     setPlacing(true);
     setMessage(null);
     try {
-      const res = await fetch('http://localhost:5000/api/bets', {
+      const res = await fetch('/api/bets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ eventId: event.id, selection: selected, stake: parseFloat(stake) }),
