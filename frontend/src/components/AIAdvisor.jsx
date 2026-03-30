@@ -64,7 +64,7 @@ export const RecommendCard = ({ event, onBet }) => {
         </button>
       )}
       {loading && (
-        <p className="text-xs text-gray-400 animate-pulse">Gemini is analyzing...</p>
+        <p className="text-xs text-gray-400 animate-pulse">Groq is analyzing...</p>
       )}
       {error && (
         <p className="text-xs text-red-500">{error}</p>
@@ -180,7 +180,7 @@ export const AutoBetPanel = ({ events, bankrollStats, onBetsPlaced }) => {
 // ── Chat Interface ─────────────────────────────────────────────────────────
 const AIAdvisor = ({ bankrollStats }) => {
   const [messages, setMessages] = useState([
-    { role: 'model', text: "Hi! I'm BetIQ, your AI betting advisor powered by Gemini. Ask me to analyze a match, explain odds, or suggest a betting strategy!" },
+    { role: 'model', text: "Hi! I'm BetIQ, your AI betting advisor powered by Groq (Llama 3.3 70B). Ask me to analyze a match, explain odds, or suggest a betting strategy!" },
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -226,7 +226,7 @@ const AIAdvisor = ({ bankrollStats }) => {
         <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold">AI</div>
         <div>
           <p className="font-semibold text-gray-800 text-sm">BetIQ Advisor</p>
-          <p className="text-xs text-green-500">Powered by Gemini</p>
+          <p className="text-xs text-green-500">Powered by Groq · Llama 3.3 70B</p>
         </div>
       </div>
 

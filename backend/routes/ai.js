@@ -1,15 +1,22 @@
 const express = require('express');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const Groq = require('groq-sdk');
+const { getMatchContext } = require('../services/footballStats');
 
 const router = express.Router();
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const MODEL = 'llama-3.3-70b-versatile';
 
-// Shared chat history per session (in-memory, keyed by session id)
+// Persistent chat sessions: sessionId → messages[]
 const chatSessions = {};
 
+async function chat(messages, json = false) {
+  const params = { model: MODEL, messages, temperature: 0.4 };
+  if (json) params.response_format = { type: 'json_object' };
+  const res = await groq.chat.completions.create(params);
+  return res.choices[0].message.content;
+}
+
 // ── POST /api/ai/recommend ──────────────────────────────────────────────────
-// Get Gemini's betting recommendation for a specific event
 router.post('/recommend', async (req, res) => {
   const { event } = req.body;
   if (!event) return res.status(400).json({ error: 'event is required' });
@@ -18,115 +25,130 @@ router.post('/recommend', async (req, res) => {
     ? `Home (${event.homeTeam}): ${event.odds.home}, Draw: ${event.odds.draw}, Away (${event.awayTeam}): ${event.odds.away}`
     : `${event.homeTeam}: ${event.odds.home}, ${event.awayTeam}: ${event.odds.away}`;
 
-  const prompt = `You are a professional sports betting analyst. Analyze this upcoming ${event.sport} match and give a concise betting recommendation.
+  // Try to fetch real stats from API-Football
+  const statsContext = event.sport === 'Football'
+    ? await getMatchContext(event.homeTeam, event.awayTeam)
+    : null;
+
+  const statsSection = statsContext
+    ? `\nReal team data:\n${statsContext}`
+    : '\n(No historical stats available for this match.)';
+
+  const prompt = `You are a professional sports betting analyst. Analyze this ${event.sport} match and give a betting recommendation.
 
 Match: ${event.homeTeam} vs ${event.awayTeam}
-Sport: ${event.sport}
-Odds: ${oddsText}
+Odds: ${oddsText}${statsSection}
 
-Respond in this exact JSON format (no markdown, no code blocks):
+Respond ONLY with valid JSON (no markdown):
 {
   "pick": "<home|draw|away>",
   "confidence": "<Low|Medium|High>",
-  "reasoning": "<2-3 sentence analysis>",
+  "reasoning": "<2-3 sentences using the stats if available>",
   "suggestedStake": "<Conservative|Moderate|Aggressive>"
 }`;
 
   try {
-    const result = await model.generateContent(prompt);
-    const text = result.response.text().trim();
-    const json = JSON.parse(text);
-    res.json(json);
+    const text = await chat([{ role: 'user', content: prompt }], true);
+    res.json(JSON.parse(text));
   } catch (err) {
-    console.error('Gemini recommend error:', err.message);
+    console.error('Groq recommend error:', err.message);
     res.status(500).json({ error: 'AI recommendation failed', detail: err.message });
   }
 });
 
 // ── POST /api/ai/auto-bet ───────────────────────────────────────────────────
-// Gemini autonomously analyzes all upcoming events and places bets
 router.post('/auto-bet', async (req, res) => {
   const { events, bankroll, maxStakePercent = 10 } = req.body;
   if (!events || !bankroll) return res.status(400).json({ error: 'events and bankroll are required' });
 
   const upcoming = events.filter(e => e.status === 'upcoming');
-  if (upcoming.length === 0) return res.json({ bets: [], message: 'No upcoming events to bet on.' });
+  if (!upcoming.length) return res.json({ bets: [], message: 'No upcoming events to bet on.' });
+
+  // Enrich football events with real stats (parallel, don't fail on errors)
+  const statsMap = {};
+  await Promise.all(
+    upcoming
+      .filter(e => e.sport === 'Football')
+      .map(async e => {
+        const ctx = await getMatchContext(e.homeTeam, e.awayTeam).catch(() => null);
+        if (ctx) statsMap[e.id] = ctx;
+      })
+  );
+
+  const maxStake = parseFloat(((bankroll * maxStakePercent) / 100).toFixed(2));
 
   const eventSummaries = upcoming.map(e => {
     const odds = e.odds.draw
       ? `Home: ${e.odds.home}, Draw: ${e.odds.draw}, Away: ${e.odds.away}`
       : `${e.homeTeam}: ${e.odds.home}, ${e.awayTeam}: ${e.odds.away}`;
-    return `- ID: ${e.id} | ${e.sport}: ${e.homeTeam} vs ${e.awayTeam} | Odds: ${odds}`;
+    const stats = statsMap[e.id] ? `\n  Stats: ${statsMap[e.id].replace(/\n/g, ' | ')}` : '';
+    return `- ID: ${e.id} | ${e.sport}: ${e.homeTeam} vs ${e.awayTeam} | Odds: ${odds}${stats}`;
   }).join('\n');
-
-  const maxStake = parseFloat(((bankroll * maxStakePercent) / 100).toFixed(2));
 
   const prompt = `You are an autonomous sports betting AI with a bankroll of $${bankroll.toFixed(2)}.
 Max stake per bet: $${maxStake} (${maxStakePercent}% of bankroll).
 
-Analyze these upcoming events and select which ones to bet on. Only pick bets with genuine value.
+Analyze these events and select only bets with genuine value. Use the stats where provided.
 
-Events:
 ${eventSummaries}
 
-Respond ONLY with a JSON array (no markdown). Each item:
-{
-  "eventId": "<id>",
-  "selection": "<home|draw|away>",
-  "stake": <number between 1 and ${maxStake}>,
-  "reasoning": "<one sentence>"
-}
+Respond ONLY with a JSON array (no markdown):
+[{ "eventId": "<id>", "selection": "<home|draw|away>", "stake": <number 1-${maxStake}>, "reasoning": "<one sentence>" }]
 
-If no bets have value, return an empty array [].`;
+Return [] if no bets have value.`;
 
   try {
-    const result = await model.generateContent(prompt);
-    const text = result.response.text().trim();
-    const cleaned = text.replace(/```json|```/g, '').trim();
-    const bets = JSON.parse(cleaned);
+    const text = await chat([{ role: 'user', content: prompt }], true);
+    const parsed = JSON.parse(text);
+    const bets = Array.isArray(parsed) ? parsed : parsed.bets || [];
     res.json({ bets, maxStake });
   } catch (err) {
-    console.error('Gemini auto-bet error:', err.message);
+    console.error('Groq auto-bet error:', err.message);
     res.status(500).json({ error: 'Auto-bet failed', detail: err.message });
   }
 });
 
 // ── POST /api/ai/chat ───────────────────────────────────────────────────────
-// Conversational AI sports betting advisor
 router.post('/chat', async (req, res) => {
   const { message, sessionId = 'default', context } = req.body;
   if (!message) return res.status(400).json({ error: 'message is required' });
 
   if (!chatSessions[sessionId]) {
-    chatSessions[sessionId] = model.startChat({
-      history: [
-        {
-          role: 'user',
-          parts: [{ text: 'You are BetIQ, an expert AI sports betting advisor. You help users analyze matches, understand odds, manage their bankroll, and make informed betting decisions. Be concise, insightful, and always remind users this is a simulator.' }],
-        },
-        {
-          role: 'model',
-          parts: [{ text: 'Got it! I\'m BetIQ, your AI betting advisor. I can analyze matches, break down odds, suggest strategies, and help you manage your bankroll — all within the simulator. What would you like to know?' }],
-        },
-      ],
-    });
+    chatSessions[sessionId] = [
+      {
+        role: 'system',
+        content: `You are BetIQ, an expert AI sports betting advisor powered by Groq (Llama 3.3 70B).
+You help users analyze matches, understand odds, manage bankroll, and make informed decisions.
+Be concise and insightful. Always remind users this is a simulator — not real money.
+When discussing specific matches, factor in team form and H2H records when mentioned.`,
+      },
+    ];
   }
 
-  const chat = chatSessions[sessionId];
   const contextNote = context
-    ? `\n\n[Current simulator state: Bankroll $${context.balance?.toFixed(2)}, ${context.betsPlaced} bets placed, ${context.betsPending} pending]`
+    ? ` [User's simulator: $${context.balance?.toFixed(2)} balance, ${context.betsPlaced} bets, ${context.betsPending} pending]`
     : '';
 
+  chatSessions[sessionId].push({ role: 'user', content: message + contextNote });
+
   try {
-    const result = await chat.sendMessage(message + contextNote);
-    res.json({ reply: result.response.text() });
+    const reply = await chat(chatSessions[sessionId]);
+    chatSessions[sessionId].push({ role: 'assistant', content: reply });
+    // Keep history manageable — trim to system + last 20 messages
+    if (chatSessions[sessionId].length > 21) {
+      chatSessions[sessionId] = [
+        chatSessions[sessionId][0],
+        ...chatSessions[sessionId].slice(-20),
+      ];
+    }
+    res.json({ reply });
   } catch (err) {
-    console.error('Gemini chat error:', err.message);
+    console.error('Groq chat error:', err.message);
     res.status(500).json({ error: 'Chat failed', detail: err.message });
   }
 });
 
-// Clear chat session
+// Clear a chat session
 router.delete('/chat/:sessionId', (req, res) => {
   delete chatSessions[req.params.sessionId];
   res.json({ message: 'Session cleared' });

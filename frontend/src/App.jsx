@@ -82,7 +82,7 @@ export default function App() {
         <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-extrabold text-white tracking-tight">BetIQ</h1>
-            <p className="text-blue-300 text-xs">Sports Betting Simulator · Powered by Gemini AI</p>
+            <p className="text-blue-300 text-xs">Sports Betting Simulator · Powered by Groq AI</p>
           </div>
           <div className="flex gap-2">
             <button
