@@ -5,6 +5,7 @@ const SPORT_ICONS = {
   Football: '⚽',
   Basketball: '🏀',
   Tennis: '🎾',
+  'American Football': '🏈',
 };
 
 const OddsButton = ({ label, odds, selected, onClick, disabled }) => {
@@ -152,7 +153,7 @@ const EventCard = ({ event, onAddToBetSlip }) => {
 
 const EventsList = ({ events, loading, onBetPlaced, onSimulate }) => {
   const [filter, setFilter] = useState('All');
-  const sports = ['All', 'Football', 'Basketball', 'Tennis'];
+  const sports = ['All', ...new Set(events.map(e => e.sport))];
 
   const filtered = filter === 'All' ? events : events.filter(e => e.sport === filter);
 

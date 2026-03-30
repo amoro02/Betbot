@@ -61,6 +61,12 @@ export default function App() {
     fetchStats();
   };
 
+  const handleRefreshOdds = async () => {
+    setLoadingEvents(true);
+    await fetch(`${API}/events/refresh`, { method: 'POST' });
+    await Promise.all([fetchEvents(), fetchStats()]);
+  };
+
   const handleReset = async () => {
     if (!window.confirm('Reset all bets and restore $1,000 bankroll?')) return;
     await fetch(`${API}/reset`, { method: 'POST' });
@@ -78,12 +84,20 @@ export default function App() {
             <h1 className="text-2xl font-extrabold text-white tracking-tight">BetIQ</h1>
             <p className="text-blue-300 text-xs">Sports Betting Simulator · Powered by Gemini AI</p>
           </div>
-          <button
-            onClick={handleReset}
-            className="text-xs text-blue-300 hover:text-white border border-blue-600 hover:border-blue-400 px-3 py-1.5 rounded-lg transition-colors"
-          >
-            Reset Simulator
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={handleRefreshOdds}
+              className="text-xs text-blue-300 hover:text-white border border-blue-600 hover:border-blue-400 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              Refresh Odds
+            </button>
+            <button
+              onClick={handleReset}
+              className="text-xs text-blue-300 hover:text-white border border-blue-600 hover:border-blue-400 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              Reset
+            </button>
+          </div>
         </div>
       </header>
 

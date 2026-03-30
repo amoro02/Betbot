@@ -36,6 +36,12 @@ const Bankroll = ({ stats, loading }) => {
       <div className="text-center mb-5">
         <p className="text-blue-200 text-sm uppercase tracking-widest mb-1">Current Balance</p>
         <p className="text-4xl font-extrabold text-white">${stats.balance?.toFixed(2)}</p>
+        {stats.lastFetched && (
+          <p className="text-blue-300 text-xs mt-1">
+            Live odds · updated {new Date(stats.lastFetched).toLocaleTimeString()}
+            {stats.oddsApiRemaining != null && ` · ${stats.oddsApiRemaining} API calls left`}
+          </p>
+        )}
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard label="Bets Placed" value={stats.betsPlaced} />
